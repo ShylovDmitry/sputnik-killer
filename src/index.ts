@@ -1,12 +1,17 @@
-import * as mongoose from 'mongoose';
 import {runImport} from './actions/import';
 import {runCheck} from './actions/check';
+import {connect} from "mongoose";
+import logger from "./logger";
 
 class App {
     private async setupDb(): Promise<void> {
         const mongoDb = "mongodb://127.0.0.1/sputnik-killer";
-        await mongoose.connect(mongoDb, { useNewUrlParser: true, useUnifiedTopology: true });
-        mongoose.connection.on("error", console.error.bind(console, "MongoDB Connection error"));
+
+        try {
+            await connect(mongoDb, {useNewUrlParser: true, useUnifiedTopology: true});
+        } catch (e) {
+            logger.error('Cannot connect to database');
+        }
     }
 
     async run(action): Promise<void> {
@@ -22,15 +27,17 @@ class App {
                 break;
 
             default:
-                throw new Error(`Wrong command line parameter: "${action}". Expected parameters are 'import' or 'check'.`);
+                logger.error(`Wrong command line parameter: "${action}".`);
+                break;
         }
-
-        console.info(`Action "${action}" is successfully executed.`)
     }
 }
 
+(async () => {
+    const action = process.argv[2];
 
-const action = process.argv[2];
+    const app = new App();
+    await app.run(action);
 
-const app = new App();
-app.run(action).catch(e => console.log(e));
+    process.exit(0);
+})();

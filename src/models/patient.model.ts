@@ -1,6 +1,6 @@
 import {Document, model, Schema} from "mongoose"
 
-export interface IPatient extends Document {
+export interface IPatient {
     programIdentifier: string;
     email: string;
     dataSource: string;
@@ -19,12 +19,14 @@ export interface IPatient extends Document {
     mobilePhone: string;
 }
 
+export interface IPatientModel extends IPatient, Document {}
+
 const PatientSchema: Schema = new Schema({
     programIdentifier: String,
-    email: String,
+    email: { type: String }, // TODO: Good to have: { required: true, unique: true }
     dataSource: String,
     cardNumber: String,
-    memberId: Number,
+    memberId: String,
     firstName: String,
     lastName: String,
     dateOfBirth: Date,
@@ -38,4 +40,4 @@ const PatientSchema: Schema = new Schema({
     mobilePhone: String
 });
 
-export default model<IPatient>('Patient', PatientSchema);
+export default model<IPatientModel>('Patient', PatientSchema);
