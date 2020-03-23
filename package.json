@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "csv-parse": "^4.8.8",
+    "csv-stringify": "^5.3.6",
     "deep-equal": "^2.0.1",
     "mongoose": "^5.9.5",
     "winston": "^3.2.1"
