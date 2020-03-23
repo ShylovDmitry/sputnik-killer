@@ -1,0 +1,33 @@
+{
+  "name": "sputnik-killer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "ts-node src/index",
+    "import": "npm start -- import",
+    "check": "npm start -- check",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShylovDmitry/sputnik-killer.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ShylovDmitry/sputnik-killer/issues"
+  },
+  "homepage": "https://github.com/ShylovDmitry/sputnik-killer#readme",
+  "devDependencies": {
+    "@types/mongoose": "^5.7.7",
+    "@types/node": "^13.9.2",
+    "ts-node": "^8.7.0",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "csv-parse": "^4.8.8",
+    "csv-stringify": "^5.3.6",
+    "mongoose": "^5.9.5"
+  }
+}
