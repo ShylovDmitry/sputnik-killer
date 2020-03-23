@@ -1,13 +1,14 @@
 import PatientModel, {IPatient, IPatientModel} from '../models/patient.model';
 import EmailModel from '../models/email.model';
-import * as parse from 'csv-parse/lib/sync';
+import * as parse from 'csv-parse';
 import * as fs from 'fs';
 import logger from '../logger';
+import {DATA_FILE} from "../config";
 
 export async function runImport(): Promise<void> {
     await clearCollections();
 
-    const patientsFromFile = readPatientsFromFile();
+    const patientsFromFile = await readPatientsFromFile();
     const patientsToInsert = patientsFromFile.map(p => convertPatientFromFileToModel(p));
     const patients = await insertPatients(patientsToInsert);
 
@@ -23,11 +24,20 @@ export async function runImport(): Promise<void> {
     }
 }
 
-export function readPatientsFromFile(): [] {
-    const content = fs.readFileSync('./data/db.csv', 'utf8');
-    return parse(content, {
-        columns: true,
-        delimiter: '|'
+export function readPatientsFromFile(): Promise<[]> {
+    return new Promise(resolve => {
+        fs.readFile(DATA_FILE, 'utf8', (err, data) => {
+            if (err) throw err;
+
+            parse(data, {
+                columns: true,
+                delimiter: '|'
+            }, (err, output) => {
+                if (err) throw err;
+
+                resolve(output);
+            })
+        });
     });
 }
 
