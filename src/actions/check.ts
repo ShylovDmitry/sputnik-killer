@@ -1,46 +1,70 @@
 import PatientModel from '../models/patient.model';
 import EmailModel from '../models/email.model';
 import * as equal from 'deep-equal';
-import {convertPatientFromFileToModel, readPatientsFromFile} from './import';
+import {convertPatientFromFileToModel, readPatientsFromFileStream} from './import';
 import logger from '../logger';
 import * as stringify from 'csv-stringify';
 import * as fs from "fs";
 import {OUTPUT_FILE} from "../config";
+import * as util from 'util';
+import * as stream from 'stream';
+import {once} from 'events';
+
+const finished = util.promisify(stream.finished);
 
 export async function runCheck(): Promise<void> {
-    const result = {};
+    const tests = [
+        { title: 'Assert File Matches Database', exec: assertFileMatchDb },
+        { title: 'Missing First Name', exec: assertMissingFirstName },
+        { title: 'Missing Email But Consent Is Y', exec: assertMissingEmail },
+        { title: 'Verify Email List', exec: assertEmailList },
+    ];
 
-    logger.info('--- Assert File Matches Database');
-    result['File Matches Database'] = await assertFileMatchDb();
-    logger.info('Done');
+    await executeTestsAndOutputResult(tests);
+}
 
-    logger.info('--- Assert Missing First Name');
-    result['Missing First Name'] = await assertMissingFirstName();
-    logger.info('Done');
+async function executeTestsAndOutputResult(tests) {
+    const stringifier = stringify({
+        header: true,
+        delimiter: '|'
+    });
+    const writeStream = fs.createWriteStream(OUTPUT_FILE, { encoding: 'utf8' });
+    stringifier.pipe(writeStream);
 
-    logger.info('--- Assert Missing Email But Consent Is Y');
-    result['Missing Email But Consent Is Y'] = await assertMissingEmail();
-    logger.info('Done');
+    for (const test of tests) {
+        logger.info(`--- ${test.title}`);
 
-    logger.info('--- Assert Email List');
-    result['Verify Email List'] = await assertEmailList();
-    logger.info('Done');
+        const result = {
+            'Test Name': test.title,
+            'Test Result': await test.exec()
+        };
+        if (!stringifier.write(result)) {
+            // Handle backpressure
+            await once(stringifier, 'drain');
+        }
 
-    await generateResultFile(result);
+        logger.info('Done');
+    }
+
+    stringifier.end();
+    await finished(writeStream);
+
+    logger.info(`Result file is created at ${OUTPUT_FILE}`);
 }
 
 async function assertFileMatchDb(): Promise<string> {
     const result = [];
 
-    const patientsFromFile = (await readPatientsFromFile()).map(p => convertPatientFromFileToModel(p));
-    for (const patientFromFile of patientsFromFile) {
-        const patientModel = await PatientModel.findOne({ email: patientFromFile.email }, { _id: 0, __v: 0 });
+    for await (const patientFromFile of readPatientsFromFileStream()) {
+        const patient = convertPatientFromFileToModel(patientFromFile);
+
+        const patientModel = await PatientModel.findOne({ email: patient.email }, { _id: 0, __v: 0 });
 
         if (!patientModel) {
-            logger.error(`Cannot find a record with email: "${patientFromFile.email}"`);
-        } else if (!equal(patientFromFile, patientModel.toObject())) {
-            result.push(patientFromFile.email);
-            logger.error(`Patient "${patientFromFile.email}" is not equal.`);
+            logger.error(`Cannot find a patient with email: "${patient.email}"`);
+        } else if (!equal(patient, patientModel.toObject())) {
+            result.push(patient.email);
+            logger.error(`Patient "${patient.email}" is not equal.`);
         }
     }
 
@@ -50,8 +74,10 @@ async function assertFileMatchDb(): Promise<string> {
 async function assertMissingFirstName(): Promise<string> {
     const patients = await PatientModel.find({ firstName: '' });
 
-    logger.error(`IDs: ${patients.map(p => p.id)}`);
-    logger.error(`Emails: ${patients.map(p => p.email)}`);
+    if (patients.length) {
+        logger.error(`IDs: ${patients.map(p => p.id)}`);
+        logger.error(`Emails: ${patients.map(p => p.email)}`);
+    }
 
     return patients.map(p => p.id).toString();
 }
@@ -59,8 +85,10 @@ async function assertMissingFirstName(): Promise<string> {
 async function assertMissingEmail(): Promise<string> {
     const patients = await PatientModel.find({ email: '', consent: 'Y' });
 
-    logger.error(`IDs: ${patients.map(p => p.id)}`);
-    logger.error(`Emails: ${patients.map(p => p.email)}`);
+    if (patients.length) {
+        logger.error(`IDs: ${patients.map(p => p.id)}`);
+        logger.error(`Emails: ${patients.map(p => p.email)}`);
+    }
 
     return patients.map(p => p.id).toString();
 }
@@ -80,32 +108,4 @@ async function assertEmailList(): Promise<string> {
     }
 
     return result.length ? 'false' : 'true';
-}
-
-function generateResultFile(tests): Promise<void> {
-    const output = [];
-
-    for (const name in tests) if (tests.hasOwnProperty(name)) {
-        output.push({
-            'Test Name': name,
-            'Test Result': tests[name]
-        });
-    }
-
-    return new Promise(resolve => {
-        stringify(output, {
-            header: true,
-            delimiter: '|',
-            columns: ['Test Name', 'Test Result']
-        }, (err, output) => {
-            if (err) throw err;
-
-            fs.writeFile(OUTPUT_FILE, output, { encoding: 'utf8' }, (err) => {
-                if (err) throw err;
-
-                logger.info(`Result file is created at ${OUTPUT_FILE}`);
-                resolve();
-            });
-        });
-    });
 }

@@ -8,37 +8,33 @@ import {DATA_FILE} from "../config";
 export async function runImport(): Promise<void> {
     await clearCollections();
 
-    const patientsFromFile = await readPatientsFromFile();
-    const patientsToInsert = patientsFromFile.map(p => convertPatientFromFileToModel(p));
-    const patients = await insertPatients(patientsToInsert);
+    for await (const patientFromFile of readPatientsFromFileStream()) {
+        const patient = await insertPatient(convertPatientFromFileToModel(patientFromFile));
 
-    const patientsToSubscribe = patients.filter(p => p.consent === 'Y');
-    if (patientsToSubscribe.length) {
-        const now = +new Date();
-        const day = 24 * 60 * 60 * 1000;
+        if (patient?.consent === 'Y') {
+            const now = +new Date();
+            const day = 24 * 60 * 60 * 1000;
 
-        await createSubscription('Day 1', patientsToSubscribe, new Date(now + day), 'Hello ${patient.firstName}. Day 1.');
-        await createSubscription('Day 2', patientsToSubscribe, new Date(now + 2 * day), 'Hello ${patient.firstName}. Day 2.');
-        await createSubscription('Day 3', patientsToSubscribe, new Date(now + 3 * day), 'Hello ${patient.firstName}. Day 3.');
-        await createSubscription('Day 4', patientsToSubscribe, new Date(now + 4 * day), 'Hello ${patient.firstName}. Day 4.');
+            await createSubscription('Day 1', patient, new Date(now + day), 'Hello ${patient.firstName}. Day 1.');
+            await createSubscription('Day 2', patient, new Date(now + 2 * day), 'Hello ${patient.firstName}. Day 2.');
+            await createSubscription('Day 3', patient, new Date(now + 3 * day), 'Hello ${patient.firstName}. Day 3.');
+            await createSubscription('Day 4', patient, new Date(now + 4 * day), 'Hello ${patient.firstName}. Day 4.');
+        }
     }
 }
 
-export function readPatientsFromFile(): Promise<[]> {
-    return new Promise(resolve => {
-        fs.readFile(DATA_FILE, 'utf8', (err, data) => {
-            if (err) throw err;
-
-            parse(data, {
-                columns: true,
-                delimiter: '|'
-            }, (err, output) => {
-                if (err) throw err;
-
-                resolve(output);
-            })
-        });
+export async function* readPatientsFromFileStream() {
+    const parser = parse({
+        columns: true,
+        delimiter: '|'
     });
+
+    const readStream = fs.createReadStream(DATA_FILE, { encoding: 'utf8' });
+    readStream.pipe(parser);
+
+    for await (const record of parser) {
+        yield record;
+    }
 }
 
 async function clearCollections(): Promise<void> {
@@ -46,27 +42,39 @@ async function clearCollections(): Promise<void> {
     await EmailModel.deleteMany({});
 }
 
-async function insertPatients(patients: IPatient[]): Promise<IPatientModel[]> {
-    const result = [];
+async function insertPatient(patient: IPatient): Promise<IPatientModel> {
+    try {
+        const patientsModel = new PatientModel(patient);
+        await patientsModel.save();
 
-    for (const patient of patients) {
-        try {
-            const patientsModel = new PatientModel(patient);
-            await patientsModel.save();
-            result.push(patientsModel);
+        logger.info(`Patient "${patientsModel.email}" was created.`);
 
-            logger.info(`Patient "${patientsModel.email}" was created.`);
-        } catch(e) {
-            logger.error(`Patient "${patient.email}" was not created (${e.message}):`, patient);
-        }
+        return patientsModel;
+    } catch(e) {
+        logger.error(`Patient "${patient.email}" was not created (${e.message}):`, patient);
     }
 
-    return result;
+    return null;
 }
 
-async function createSubscription(title: string, patients: IPatientModel[], sendDate: Date, body: string = '') {
-    const emails = patients.map(patient => ({ title, body, sendDate, patient: patient._id }));
-    return await EmailModel.collection.insertMany(emails);
+async function createSubscription(title: string, patient: IPatientModel, sendDate: Date, body: string = '') {
+    try {
+        const emailModel = new EmailModel({
+            title,
+            body,
+            sendDate,
+            patient: patient._id
+        });
+        await emailModel.save();
+
+        logger.info(`Subscription "${title}" for patient "${patient.email}" was created.`);
+
+        return emailModel;
+    } catch(e) {
+        logger.error(`Subscription "${title}" for patient "${patient.email}" was not created (${e.message}):`, patient);
+    }
+
+    return null;
 }
 
 export function convertPatientFromFileToModel(patient: any): IPatient {
