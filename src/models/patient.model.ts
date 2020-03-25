@@ -22,11 +22,21 @@ export interface IPatient {
 export interface IPatientModel extends IPatient, Document {}
 
 const PatientSchema: Schema = new Schema({
-    programIdentifier: String,
-    email: { type: String }, // TODO: Good to have: { required: true, unique: true }
+    programIdentifier: Number,
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        validate: {
+            validator: function(v) {
+                return /^([\w-\.]+@([\w-]+\.)+[\w-]{2,4})?$/.test(v);
+            },
+            message: props => `${props.value} is not a valid email`
+        }
+    },
     dataSource: String,
-    cardNumber: String,
-    memberId: String,
+    cardNumber: Number,
+    memberId: Number,
     firstName: String,
     lastName: String,
     dateOfBirth: Date,
@@ -36,7 +46,10 @@ const PatientSchema: Schema = new Schema({
     state: String,
     zipCode: String,
     telephoneNumber: String,
-    consent: String,
+    consent: {
+        type: String,
+        enum: ['Y', 'N']
+    },
     mobilePhone: String
 });
 
