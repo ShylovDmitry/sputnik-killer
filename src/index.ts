@@ -8,7 +8,7 @@ class App {
         const mongoDb = "mongodb://127.0.0.1/sputnik-killer";
 
         try {
-            await connect(mongoDb, {useNewUrlParser: true, useUnifiedTopology: true});
+            await connect(mongoDb, { useNewUrlParser: true, useUnifiedTopology: true, useCreateIndex: true });
         } catch (e) {
             logger.error('Cannot connect to database');
         }
